@@ -20,9 +20,10 @@ const (
 )
 
 var (
-	Routines      = defaultRoutines
-	TCPPort   int = defaultPort
-	PingTimes int = defaultPingTimes
+	Routines        = defaultRoutines
+	TCPPort     int = defaultPort
+	PingTimes   int = defaultPingTimes
+	DisablePing     = false
 )
 
 type Ping struct {

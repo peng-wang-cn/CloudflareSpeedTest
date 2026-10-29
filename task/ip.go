@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/XIU2/CloudflareSpeedTest/utils"
 )
 
 const defaultInputFile = "ip.txt"
@@ -175,8 +177,18 @@ func loadIPRanges() []*net.IPAddr {
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() { // 循环遍历文件每一行
 			line := strings.TrimSpace(scanner.Text()) // 去除首尾的空白字符（空格、制表符、换行符等）
-			if line == "" {                           // 跳过空行
+			if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") { // 跳过空行及注释
 				continue
+			}
+			// 如果是 CSV 格式（含有逗号），提取第一列 IP
+			if strings.Contains(line, ",") {
+				parts := strings.Split(line, ",")
+				col0 := strings.TrimSpace(parts[0])
+				// 跳过 CSV 表头
+				if col0 == "IP 地址" || strings.EqualFold(col0, "IP") || strings.EqualFold(col0, "IP Address") {
+					continue
+				}
+				line = col0
 			}
 			ranges.parseCIDR(line) // 解析 IP 段，获得 IP、IP 范围、子网掩码
 			if isIPv4(line) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）
@@ -187,4 +199,95 @@ func loadIPRanges() []*net.IPAddr {
 		}
 	}
 	return ranges.ips
+}
+
+// LoadPingData 从文件或参数中加载 Ping 结构数据，用于禁用延迟测速(-dp)直接进行下载测速
+func LoadPingData() utils.PingDelaySet {
+	var pingData utils.PingDelaySet
+	// 如果是指定的 IP 文件，优先检查是否是包含完整测速信息的 CSV 文件
+	if IPText == "" && IPFile != "" {
+		if file, err := os.Open(IPFile); err == nil {
+			defer file.Close()
+			scanner := bufio.NewScanner(file)
+			isCSV := false
+			firstLine := true
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+					continue
+				}
+				parts := strings.Split(line, ",")
+				if firstLine {
+					firstLine = false
+					// 检测是否是 CloudflareSpeedTest 生成的 CSV 表头
+					if len(parts) >= 5 && (parts[0] == "IP 地址" || strings.EqualFold(parts[0], "IP") || strings.EqualFold(parts[0], "IP Address")) {
+						isCSV = true
+						continue
+					}
+					// 或者是无表头但有多列的 CSV 行
+					if len(parts) >= 5 && net.ParseIP(strings.TrimSpace(parts[0])) != nil {
+						isCSV = true
+					}
+				}
+				if isCSV {
+					ipStr := strings.TrimSpace(parts[0])
+					if ipStr == "IP 地址" || strings.EqualFold(ipStr, "IP") || strings.EqualFold(ipStr, "IP Address") {
+						continue
+					}
+					ip := net.ParseIP(ipStr)
+					if ip == nil {
+						continue
+					}
+					sended := 0
+					received := 0
+					var delay time.Duration
+					colo := ""
+					if len(parts) > 1 {
+						sended, _ = strconv.Atoi(strings.TrimSpace(parts[1]))
+					}
+					if len(parts) > 2 {
+						received, _ = strconv.Atoi(strings.TrimSpace(parts[2]))
+					}
+					if len(parts) > 4 {
+						if d, err := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64); err == nil {
+							delay = time.Duration(d * float64(time.Millisecond))
+						}
+					}
+					if len(parts) > 6 {
+						colo = strings.TrimSpace(parts[6])
+						if colo == "N/A" {
+							colo = ""
+						}
+					}
+					pingData = append(pingData, utils.CloudflareIPData{
+						PingData: &utils.PingData{
+							IP:       &net.IPAddr{IP: ip},
+							Sended:   sended,
+							Received: received,
+							Delay:    delay,
+							Colo:     colo,
+						},
+					})
+				}
+			}
+			if len(pingData) > 0 {
+				return pingData
+			}
+		}
+	}
+
+	// 否则常规加载（纯 IP 列表文本、CIDR 或 -ip 参数）
+	ips := loadIPRanges()
+	for _, ip := range ips {
+		pingData = append(pingData, utils.CloudflareIPData{
+			PingData: &utils.PingData{
+				IP:       ip,
+				Sended:   0,
+				Received: 0,
+				Delay:    0,
+				Colo:     "",
+			},
+		})
+	}
+	return pingData
 }

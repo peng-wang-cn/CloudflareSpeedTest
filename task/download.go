@@ -54,8 +54,15 @@ func TestDownloadSpeed(ipSet utils.PingDelaySet) (speedSet utils.DownloadSpeedSe
 		return utils.DownloadSpeedSet(ipSet)
 	}
 	if len(ipSet) <= 0 { // IP 数组长度(IP数量) 大于 0 时才会继续下载测速
-		utils.Yellow.Println("[信息] 延迟测速结果 IP 数量为 0，跳过下载测速。")
+		if DisablePing {
+			utils.Yellow.Println("[信息] 待测速 IP 数量为 0，跳过下载测速。")
+		} else {
+			utils.Yellow.Println("[信息] 延迟测速结果 IP 数量为 0，跳过下载测速。")
+		}
 		return
+	}
+	if DisablePing {
+		utils.Cyan.Printf("跳过延迟测速，直接开始下载测速（待测 IP 数量：%d）\n", len(ipSet))
 	}
 	testNum := TestCount                        // 等待下载测速的队列数量 先默认等于 下载测速数量(-dn）
 	if len(ipSet) < TestCount || MinSpeed > 0 { // 如果延迟测速并过滤后的 IP 数组长度(IP数量) 小于 下载测速数量(-dn），（即 -dn 预期数量是不够的），或者指定了 下载测速下限 (-sl) 条件（这就可能要全部下载测速一遍，直到找齐预期数量或测完为止），则 等待下载测速的队列数量 修正为 IP 数量

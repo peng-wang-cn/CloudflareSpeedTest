@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"log"
@@ -22,6 +23,7 @@ var (
 	InputMinDelay    = minDelay
 	InputMaxLossRate = maxLossRate
 	Output           = defaultOutput
+	OutputIP         = ""
 	PrintNum         = 10
 	Debug            = false // 是否开启调试模式
 )
@@ -34,6 +36,11 @@ func NoPrintResult() bool {
 // 是否输出到文件
 func noOutput() bool {
 	return Output == "" || Output == " "
+}
+
+// 是否输出 IP 列表到文件
+func noOutputIP() bool {
+	return OutputIP == "" || OutputIP == " "
 }
 
 type PingData struct {
@@ -53,6 +60,9 @@ type CloudflareIPData struct {
 // 计算丢包率
 func (cf *CloudflareIPData) getLossRate() float32 {
 	if cf.lossRate == 0 {
+		if cf.Sended == 0 {
+			return 0
+		}
 		pingLost := cf.Sended - cf.Received
 		cf.lossRate = float32(pingLost) / float32(cf.Sended)
 	}
@@ -90,6 +100,24 @@ func ExportCsv(data []CloudflareIPData) {
 	_ = w.Write([]string{"IP 地址", "已发送", "已接收", "丢包率", "平均延迟", "下载速度(MB/s)", "地区码"})
 	_ = w.WriteAll(convertToString(data))
 	w.Flush()
+}
+
+func ExportIP(data []CloudflareIPData) {
+	if noOutputIP() || len(data) == 0 {
+		return
+	}
+	fp, err := os.Create(OutputIP)
+	if err != nil {
+		log.Fatalf("创建 IP 列表文件[%s]失败：%v", OutputIP, err)
+		return
+	}
+	defer fp.Close()
+	w := bufio.NewWriter(fp)
+	for _, v := range data {
+		_, _ = w.WriteString(v.IP.String() + "\n")
+	}
+	_ = w.Flush()
+	fmt.Printf("有效 IP 列表已写入 %v 文件，可直接供 [-f] 参数复用。\n", OutputIP)
 }
 
 func convertToString(data []CloudflareIPData) [][]string {

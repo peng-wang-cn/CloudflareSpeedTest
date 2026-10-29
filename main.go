@@ -62,9 +62,13 @@ https://github.com/XIU2/CloudflareSpeedTest
         指定IP段数据；直接通过参数指定要测速的 IP 段数据，英文逗号分隔；(默认 空)
     -o result.csv
         写入结果文件；如路径含有空格请加上引号；值为空时不写入文件 [-o ""]；(默认 result.csv)
+    -oip ""
+        输出 IP 列表文件；如路径含有空格请加上引号；将通过测速筛选的 IP 列表以纯文本(一行一个IP)格式写入指定文件，可直接供 [-f] 参数复用；(默认 空)
 
     -dd
         禁用下载测速；禁用后测速结果会按延迟排序 (默认按下载速度排序)；(默认 启用)
+    -dp
+        禁用延迟测速；跳过延迟测速，直接使用 IP 列表进行下载测速；(默认 启用延迟测速)
     -allip
         测速全部的IP；对 IP 段中的每个 IP (仅支持 IPv4) 进行测速；(默认 每个 /24 段随机测速一个 IP)
 
@@ -98,8 +102,10 @@ https://github.com/XIU2/CloudflareSpeedTest
 	flag.StringVar(&task.IPFile, "f", "ip.txt", "IP段数据文件")
 	flag.StringVar(&task.IPText, "ip", "", "指定IP段数据")
 	flag.StringVar(&utils.Output, "o", "result.csv", "输出结果文件")
+	flag.StringVar(&utils.OutputIP, "oip", "", "输出 IP 列表文件")
 
 	flag.BoolVar(&task.Disable, "dd", false, "禁用下载测速")
+	flag.BoolVar(&task.DisablePing, "dp", false, "禁用延迟测速")
 	flag.BoolVar(&task.TestAll, "allip", false, "测速全部 IP")
 
 	flag.BoolVar(&utils.Debug, "debug", false, "调试输出模式")
@@ -107,6 +113,11 @@ https://github.com/XIU2/CloudflareSpeedTest
 	flag.BoolVar(&printVersion, "v", false, "打印程序版本")
 	flag.Usage = func() { fmt.Print(help) }
 	flag.Parse()
+
+	if task.Disable && task.DisablePing {
+		utils.Red.Println("[错误] 不能同时禁用延迟测速(-dp)和禁用下载测速(-dd)！")
+		os.Exit(1)
+	}
 
 	if task.MinSpeed > 0 && time.Duration(maxDelay)*time.Millisecond == utils.InputMaxDelay {
 		utils.Yellow.Println("[提示] 在使用 [-sl] 参数时，建议搭配 [-tl] 参数，以避免因凑不够 [-dn] 数量而一直测速...")
@@ -135,11 +146,17 @@ func main() {
 
 	fmt.Printf("# XIU2/CloudflareSpeedTest %s \n\n", version)
 
-	// 开始延迟测速 + 过滤延迟/丢包
-	pingData := task.NewPing().Run().FilterDelay().FilterLossRate()
+	var pingData utils.PingDelaySet
+	if task.DisablePing {
+		pingData = task.LoadPingData()
+	} else {
+		// 开始延迟测速 + 过滤延迟/丢包
+		pingData = task.NewPing().Run().FilterDelay().FilterLossRate()
+	}
 	// 开始下载测速
 	speedData := task.TestDownloadSpeed(pingData)
-	utils.ExportCsv(speedData) // 输出文件
+	utils.ExportCsv(speedData) // 输出 CSV 文件
+	utils.ExportIP(speedData)  // 输出 IP 列表文件
 	speedData.Print()          // 打印结果
 	endPrint()                 // 根据情况选择退出方式（针对 Windows）
 }
@@ -148,6 +165,9 @@ func main() {
 func endPrint() {
 	if utils.NoPrintResult() { // 如果不需要打印测速结果，则直接退出
 		return
+	}
+	if task.Disable && utils.OutputIP == "" {
+		utils.Cyan.Println("[提示] 可搭配 [-oip ip.txt] 将有效 IP 导出为文本列表，后续可直接使用 [-f ip.txt -dp] 仅进行下载测速。")
 	}
 	if runtime.GOOS == "windows" { // 如果是 Windows 系统，则需要按下 回车键 或 Ctrl+C 退出（避免通过双击运行时，测速完毕后直接关闭）
 		fmt.Printf("按下 回车键 或 Ctrl+C 退出。")
