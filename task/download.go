@@ -81,7 +81,13 @@ func TestDownloadSpeed(ipSet utils.PingDelaySet) (speedSet utils.DownloadSpeedSe
 	}
 	bar := utils.NewBar(TestCount, bar_b, "")
 	for i := 0; i < testNum; i++ {
+		if Ctx.Err() != nil {
+			break
+		}
 		speed, colo := downloadHandler(ipSet[i].IP)
+		if Ctx.Err() != nil {
+			break
+		}
 		ipSet[i].DownloadSpeed = speed
 		if ipSet[i].Colo == "" { // 只有当 Colo 是空的时候，才写入，否则代表之前是 httping 测速并获取过了
 			ipSet[i].Colo = colo
@@ -90,7 +96,12 @@ func TestDownloadSpeed(ipSet utils.PingDelaySet) (speedSet utils.DownloadSpeedSe
 		if speed >= MinSpeed*1024*1024 {
 			bar.Grow(1, "")
 			speedSet = append(speedSet, ipSet[i]) // 高于下载速度下限时，添加到新数组中
-			if len(speedSet) == TestCount {       // 凑够满足条件的 IP 时（下载测速数量 -dn），就跳出循环
+			if MinSpeed > 0 {
+				sort.Sort(speedSet)
+				utils.ExportCsv(speedSet)
+				utils.WriteIP(speedSet)
+			}
+			if len(speedSet) == TestCount { // 凑够满足条件的 IP 时（下载测速数量 -dn），就跳出循环
 				break
 			}
 		}
@@ -163,7 +174,7 @@ func downloadHandler(ip *net.IPAddr) (float64, string) {
 		},
 	}
 	defer client.CloseIdleConnections()
-	req, err := http.NewRequest("GET", URL, nil)
+	req, err := http.NewRequestWithContext(Ctx, "GET", URL, nil)
 	if err != nil {
 		if utils.Debug { // 调试模式下，输出更多信息
 			utils.Red.Printf("[调试] IP: %s, 下载测速请求创建失败，错误信息: %v, 下载测速地址: %s\n", ip.String(), err, URL)
@@ -209,6 +220,9 @@ func downloadHandler(ip *net.IPAddr) (float64, string) {
 
 	// 循环计算，如果文件下载完了（两者相等），则退出循环（终止测速）
 	for contentLength != contentRead {
+		if Ctx.Err() != nil {
+			break
+		}
 		currentTime := time.Now()
 		if currentTime.After(nextTime) {
 			timeCounter++

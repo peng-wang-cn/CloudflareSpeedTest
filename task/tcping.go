@@ -70,6 +70,9 @@ func (p *Ping) Run() utils.PingDelaySet {
 		utils.Cyan.Printf("开始延迟测速（模式：TCP, 端口：%d, 范围：%v ~ %v ms, 丢包：%.2f)\n", TCPPort, utils.InputMinDelay.Milliseconds(), utils.InputMaxDelay.Milliseconds(), utils.InputMaxLossRate)
 	}
 	for _, ip := range p.ips {
+		if Ctx.Err() != nil {
+			break
+		}
 		p.wg.Add(1)
 		p.control <- false
 		go p.start(ip)
@@ -82,7 +85,9 @@ func (p *Ping) Run() utils.PingDelaySet {
 
 func (p *Ping) start(ip *net.IPAddr) {
 	defer p.wg.Done()
-	p.tcpingHandler(ip)
+	if Ctx.Err() == nil {
+		p.tcpingHandler(ip)
+	}
 	<-p.control
 }
 
@@ -95,7 +100,8 @@ func (p *Ping) tcping(ip *net.IPAddr) (bool, time.Duration) {
 	} else {
 		fullAddress = fmt.Sprintf("[%s]:%d", ip.String(), TCPPort)
 	}
-	conn, err := net.DialTimeout("tcp", fullAddress, tcpConnectTimeout)
+	d := net.Dialer{Timeout: tcpConnectTimeout}
+	conn, err := d.DialContext(Ctx, "tcp", fullAddress)
 	if err != nil {
 		return false, 0
 	}
@@ -112,6 +118,9 @@ func (p *Ping) checkConnection(ip *net.IPAddr) (recv int, totalDelay time.Durati
 	}
 	colo = "" // TCPing 不获取 colo
 	for i := 0; i < PingTimes; i++ {
+		if Ctx.Err() != nil {
+			break
+		}
 		if ok, delay := p.tcping(ip); ok {
 			recv++
 			totalDelay += delay

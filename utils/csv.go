@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/csv"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"strconv"
@@ -92,7 +91,7 @@ func ExportCsv(data []CloudflareIPData) {
 	}
 	fp, err := os.Create(Output)
 	if err != nil {
-		log.Fatalf("创建文件[%s]失败：%v", Output, err)
+		Red.Printf("\n创建文件[%s]失败：%v\n", Output, err)
 		return
 	}
 	defer fp.Close()
@@ -102,13 +101,13 @@ func ExportCsv(data []CloudflareIPData) {
 	w.Flush()
 }
 
-func ExportIP(data []CloudflareIPData) {
+func WriteIP(data []CloudflareIPData) {
 	if noOutputIP() || len(data) == 0 {
 		return
 	}
 	fp, err := os.Create(OutputIP)
 	if err != nil {
-		log.Fatalf("创建 IP 列表文件[%s]失败：%v", OutputIP, err)
+		Red.Printf("\n创建 IP 列表文件[%s]失败：%v\n", OutputIP, err)
 		return
 	}
 	defer fp.Close()
@@ -117,6 +116,13 @@ func ExportIP(data []CloudflareIPData) {
 		_, _ = w.WriteString(v.IP.String() + "\n")
 	}
 	_ = w.Flush()
+}
+
+func ExportIP(data []CloudflareIPData) {
+	if noOutputIP() || len(data) == 0 {
+		return
+	}
+	WriteIP(data)
 	fmt.Printf("有效 IP 列表已写入 %v 文件，可直接供 [-f] 参数复用。\n", OutputIP)
 }
 

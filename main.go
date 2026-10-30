@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/XIU2/CloudflareSpeedTest/task"
@@ -15,9 +17,24 @@ import (
 
 var (
 	version, versionNew string
+	interrupted         bool
 )
 
+func initSignalHandler() {
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		interrupted = true
+		utils.Yellow.Println("\n[提示] 收到中断信号(Ctrl+C)，正在整理已获取的测速结果并退出...")
+		task.Cancel()
+		<-c
+		os.Exit(130)
+	}()
+}
+
 func init() {
+	initSignalHandler()
 	var printVersion bool
 	var help = `
 CloudflareSpeedTest ` + version + `
@@ -153,6 +170,15 @@ func main() {
 		// 开始延迟测速 + 过滤延迟/丢包
 		pingData = task.NewPing().Run().FilterDelay().FilterLossRate()
 	}
+
+	if interrupted {
+		speedData := utils.DownloadSpeedSet(pingData)
+		utils.ExportCsv(speedData) // 输出 CSV 文件
+		utils.ExportIP(speedData)  // 输出 IP 列表文件
+		speedData.Print()          // 打印结果
+		return
+	}
+
 	// 开始下载测速
 	speedData := task.TestDownloadSpeed(pingData)
 	utils.ExportCsv(speedData) // 输出 CSV 文件
@@ -163,7 +189,7 @@ func main() {
 
 // 根据情况选择退出方式（针对 Windows）
 func endPrint() {
-	if utils.NoPrintResult() { // 如果不需要打印测速结果，则直接退出
+	if utils.NoPrintResult() || interrupted { // 如果不需要打印测速结果或被中断，则直接退出
 		return
 	}
 	if task.Disable && utils.OutputIP == "" {

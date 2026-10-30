@@ -42,7 +42,7 @@ func (p *Ping) httping(ip *net.IPAddr) (int, time.Duration, string) {
 	// 先访问一次获得 HTTP 状态码 及 地区码
 	var colo string
 	{
-		request, err := http.NewRequest(http.MethodHead, URL, nil)
+		request, err := http.NewRequestWithContext(Ctx, http.MethodHead, URL, nil)
 		if err != nil {
 			if utils.Debug { // 调试模式下，输出更多信息
 				utils.Red.Printf("[调试] IP: %s, 延迟测速请求创建失败，错误信息: %v, 测速地址: %s\n", ip.String(), err, URL)
@@ -99,7 +99,10 @@ func (p *Ping) httping(ip *net.IPAddr) (int, time.Duration, string) {
 	success := 0
 	var delay time.Duration
 	for i := 0; i < PingTimes; i++ {
-		request, err := http.NewRequest(http.MethodHead, URL, nil)
+		if Ctx.Err() != nil {
+			break
+		}
+		request, err := http.NewRequestWithContext(Ctx, http.MethodHead, URL, nil)
 		if err != nil {
 			log.Fatal("意外的错误，情报告：", err)
 			return 0, 0, ""
